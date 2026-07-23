@@ -14,9 +14,11 @@ import asyncio
 import base64
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, File, Form, UploadFile
+from fastapi.responses import HTMLResponse
 from langgraph.checkpoint.mongodb import MongoDBSaver
 from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
@@ -64,6 +66,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="LedgerMind — Agent 3 (Analyse documentaire)", lifespan=lifespan)
+
+# Interface web de test, servie en MÊME ORIGINE que l'API (aucun CORS requis).
+_FRONTEND = Path(__file__).resolve().parent.parent / "frontend" / "index.html"
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+async def index() -> str:
+    if not _FRONTEND.exists():
+        return "<h1>Agent 3</h1><p>frontend/index.html introuvable.</p>"
+    return _FRONTEND.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

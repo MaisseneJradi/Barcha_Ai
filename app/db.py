@@ -36,53 +36,66 @@ class Database:
         return cls(MongoClient(uri), db_name)
 
     def ensure_indexes(self) -> None:
-        """Crée les index requis (idempotent, auto-réparant)."""
-        # Index UNIQUE de déduplication (FR-12).
-        self._ensure_index(
+        """Crée les index requis (idempotent, auto-réparant).
+
+        La déduplication (FR-12) est PAR UTILISATEUR : deux créateurs distincts
+        peuvent légitimement recevoir une facture n° 001 du même fournisseur. La
+        clé unique inclut donc `user_id`, en cohérence avec `find_duplicate` (lui
+        aussi filtré par user_id). Sans cela, l'unicité serait globale et une
+        facture d'un autre utilisateur bloquerait l'insertion (faux doublon).
+        """
+        # Index UNIQUE de déduplication (FR-12), par utilisateur.
+        self._ensure_unique_index(
             self.invoices,
             [
+                ("user_id", ASCENDING),
                 ("invoice_number", ASCENDING),
                 ("issuer_tax_id", ASCENDING),
                 ("total_ttc", ASCENDING),
                 ("issue_date", ASCENDING),
             ],
             name=UNIQUE_INDEX_NAME,
-            unique=True,
         )
         # Index de listing par utilisateur (FR-13).
         self._ensure_index(self.invoices, [("user_id", ASCENDING)], name="idx_user_id")
         # Historique de chat par (user_id, document_id).
-        self._ensure_index(
+        self._ensure_unique_index(
             self.chat_sessions,
             [("user_id", ASCENDING), ("document_id", ASCENDING)],
             name="uniq_chat_session",
-            unique=True,
         )
 
     @staticmethod
     def _ensure_index(collection, keys, name, unique: bool = False) -> None:
-        """Crée un index, en tolérant qu'un index équivalent préexiste.
-
-        Si la même clé existe déjà sous un AUTRE nom (typiquement une base créée
-        par une version antérieure), MongoDB lève OperationFailure code 85
-        (IndexOptionsConflict). On supprime alors l'ancien index et on recrée
-        celui attendu : le démarrage reste idempotent d'une version à l'autre.
-        """
+        """Crée un index NON unique, en tolérant qu'il préexiste (idempotent)."""
         try:
             collection.create_index(keys, name=name, unique=unique)
-            return
         except OperationFailure as exc:
-            if exc.code != 85:  # 85 = IndexOptionsConflict ; tout autre code = vraie erreur
+            # 85 = IndexOptionsConflict, 86 = IndexKeySpecsConflict : déjà présent.
+            if exc.code not in (85, 86):
                 raise
-        # Trouver l'index préexistant portant exactement la même clé et le remplacer.
+
+    @staticmethod
+    def _ensure_unique_index(collection, keys, name) -> None:
+        """Garantit UNE seule contrainte d'unicité, portant exactement `keys`.
+
+        Supprime au passage toute ancienne contrainte d'unicité de clé
+        DIFFÉRENTE (typiquement l'ancien index global sans `user_id`, qui
+        provoquait de faux doublons entre utilisateurs), puis (re)crée l'index
+        attendu. Idempotent d'une version du schéma à l'autre.
+        """
         desired = [(field, direction) for field, direction in keys]
-        for idx_name, info in collection.index_information().items():
+        for idx_name, info in list(collection.index_information().items()):
             if idx_name == "_id_":
                 continue
-            if [(f, d) for f, d in info.get("key", [])] == desired:
-                collection.drop_index(idx_name)
-                break
-        collection.create_index(keys, name=name, unique=unique)
+            info_key = [(f, d) for f, d in info.get("key", [])]
+            if info_key == desired:
+                if idx_name == name and info.get("unique"):
+                    return  # déjà exactement l'index voulu
+                collection.drop_index(idx_name)   # bonne clé, mauvais nom/options
+            elif info.get("unique") or idx_name == name:
+                collection.drop_index(idx_name)   # ancienne clé unique obsolète
+        collection.create_index(keys, name=name, unique=True)
 
     # -- Déduplication --------------------------------------------------------
     def find_duplicate(self, user_id: str, dedup_key: Dict[str, Any]) -> Optional[Dict[str, Any]]:

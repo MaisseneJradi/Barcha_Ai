@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LedgerMind · Agent 3 — Analyse de factures</title>
+<style>
+  :root {
+    --bg: #f6f4ee;
+    --surface: #ffffff;
+    --surface-2: #faf8f2;
+    --border: #e6e1d5;
+    --ink: #2a2723;
+    --ink-soft: #6b6459;
+    --accent: #9a7d3a;         /* or LedgerMind */
+    --accent-soft: #f3ead2;
+    --accent-strong: #7d6529;
+    --green: #2f8f5b;
+    --green-bg: #e8f5ec;
+    --red: #c0492f;
+    --red-bg: #fbe9e4;
+    --amber: #b7791f;
+    --amber-bg: #fcf1dc;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(40,35,28,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1815; --surface: #23201c; --surface-2: #1f1c18;
+      --border: #38332b; --ink: #ece7dd; --ink-soft: #a89f90;
+      --accent: #cdae6a; --accent-strong: #e0c481;
+      --green: #6bd39a; --green-bg: #17352456; --red: #f0937c; --red-bg: #3a1c1656;
+      --amber: #e3b661; --amber-bg: #3a2e1656;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  a { color: var(--accent-strong); }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; padding: 14px 24px;
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 34px; height: 34px; border-radius: 9px; flex: 0 0 auto;
+    background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+    display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 16px;
+  }
+  .brand h1 { font-size: 16px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  .brand p { font-size: 12px; margin: 0; color: var(--ink-soft); }
+  .health { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-soft); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #bbb; }
+  .dot.ok { background: var(--green); box-shadow: 0 0 0 3px var(--green-bg); }
+  .dot.ko { background: var(--red); box-shadow: 0 0 0 3px var(--red-bg); }
+
+  main { max-width: 1120px; margin: 0 auto; padding: 22px; }
+  .grid { display: grid; grid-template-columns: 1.35fr 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 880px) { .grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; margin-bottom: 18px;
+  }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--ink-soft); margin: 0 0 14px; }
+  .step { color: var(--accent-strong); font-weight: 700; }
+
+  .config { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; }
+  @media (max-width: 560px) { .config { grid-template-columns: 1fr; } }
+  label { display: block; font-size: 12.5px; color: var(--ink-soft); margin-bottom: 5px; font-weight: 600; }
+  input[type=text], textarea {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--surface-2); color: var(--ink); font: inherit; outline: none;
+  }
+  input[type=text]:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .hint { font-size: 11.5px; color: var(--ink-soft); margin-top: 6px; }
+
+  .drop {
+    border: 2px dashed var(--border); border-radius: 12px; padding: 30px 18px; text-align: center;
+    cursor: pointer; transition: .15s; background: var(--surface-2);
+  }
+  .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop .big { font-size: 15px; font-weight: 600; margin: 6px 0 2px; }
+  .drop .sub { font-size: 12.5px; color: var(--ink-soft); }
+  .filechip {
+    display: none; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 12px;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; font-size: 13.5px;
+  }
+  .filechip.show { display: flex; }
+  .filechip .x { margin-left: auto; cursor: pointer; color: var(--ink-soft); font-weight: 700; }
+
+  button {
+    font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 10px 16px;
+    cursor: pointer; transition: .15s; color: #fff; background: var(--accent-strong);
+  }
+  button:hover { filter: brightness(1.06); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--border); }
+  button.ok { background: var(--green); }
+  button.danger { background: var(--red); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .mt { margin-top: 14px; }
+
+  .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;
+    border-radius: 50%; display: inline-block; animation: spin .7s linear infinite; vertical-align: -3px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
+    font-size: 12px; font-weight: 650; }
+  .badge.cat { background: var(--accent-soft); color: var(--accent-strong); }
+  .badge.green { background: var(--green-bg); color: var(--green); }
+  .badge.red { background: var(--red-bg); color: var(--red); }
+  .badge.amber { background: var(--amber-bg); color: var(--amber); }
+
+  table.kv { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  table.kv td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.kv td.k { color: var(--ink-soft); width: 44%; }
+  table.kv td.v { font-weight: 550; }
+  .muted { color: var(--ink-soft); font-style: italic; }
+
+  table.lines { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 6px; }
+  table.lines th, table.lines td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; }
+  table.lines th { color: var(--ink-soft); font-weight: 600; }
+  table.lines td.num, table.lines th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .analysis { background: var(--surface-2); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 10px; padding: 12px 14px; margin-top: 12px; white-space: pre-wrap; font-size: 14px; }
+
+  .dupgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .dupgrid { grid-template-columns: 1fr; } }
+  .dupcol { border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: var(--surface-2); }
+  .dupcol h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--ink-soft); }
+  .dupcol.new { border-color: var(--accent); }
+
+  .chat { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; margin-bottom: 12px; }
+  .msg { padding: 9px 12px; border-radius: 12px; font-size: 13.5px; max-width: 88%; white-space: pre-wrap; }
+  .msg.user { align-self: flex-end; background: var(--accent-strong); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.bot { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+
+  .invlist { display: flex; flex-direction: column; gap: 10px; }
+  .invitem { border: 1px solid var(--border); border-radius: 10px; padding: 11px 12px; background: var(--surface-2); }
+  .invitem .top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+  .invitem .ttl { font-weight: 650; font-size: 13.5px; }
+  .invitem .meta { font-size: 12px; color: var(--ink-soft); }
+
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 13.5px;
+    box-shadow: var(--shadow); opacity: 0; pointer-events: none; transition: .25s; z-index: 50; }
+  .toast.show { opacity: 1; }
+  .empty { color: var(--ink-soft); font-size: 13px; text-align: center; padding: 18px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo">LM</div>
+    <div>
+      <h1>Agent 3 — Analyse documentaire</h1>
+      <p>LedgerMind · extraction, analyse &amp; déductibilité des factures</p>
+    </div>
+  </div>
+  <div class="health"><span class="dot" id="healthDot"></span><span id="healthTxt">connexion…</span></div>
+</header>
+
+<main>
+  <!-- Configuration -->
+  <div class="card">
+    <h2>Profil utilisateur</h2>
+    <div class="config">
+      <div>
+        <label for="userId">Identifiant utilisateur</label>
+        <input type="text" id="userId" placeholder="ex. demo-user" />
+      </div>
+      <div>
+        <label for="activite">Activité déclarée <span style="font-weight:400">(sert à juger la déductibilité)</span></label>
+        <input type="text" id="activite" placeholder="ex. créatrice de contenu / influenceuse (BNC)" />
+      </div>
+    </div>
+    <p class="hint">Ces deux valeurs sont mémorisées localement dans ce navigateur.</p>
+  </div>
+
+  <div class="grid">
+    <!-- Colonne principale -->
+    <div>
+      <!-- Upload -->
+      <div class="card">
+        <h2><span class="step">1 ·</span> Déposer une facture</h2>
+        <div class="drop" id="drop">
+          <div style="font-size:26px">📄</div>
+          <div class="big">Glissez une facture ici, ou cliquez</div>
+          <div class="sub">PDF, PNG, JPG ou WEBP</div>
+          <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/*" hidden />
+        </div>
+        <div class="filechip" id="fileChip">
+          <span>📎</span><span id="fileName"></span><span class="x" id="fileRemove">✕</span>
+        </div>
+        <div class="row mt">
+          <button id="analyzeBtn" disabled>Analyser la facture</button>
+          <span class="hint" id="analyzeHint"></span>
+        </div>
+      </div>
+
+      <!-- Action requise (HITL) -->
+      <div class="card hidden" id="pendingCard">
+        <h2>⚠︎ Action requise</h2>
+        <div id="pendingBody"></div>
+      </div>
+
+      <!-- Résultat -->
+      <div class="card hidden" id="resultCard">
+        <h2><span class="step">2 ·</span> Résultat de l'analyse</h2>
+        <div id="resultBody"></div>
+      </div>
+    </div>
+
+    <!-- Colonne latérale -->
+    <div>
+      <!-- Q&A -->
+      <div class="card">
+        <h2>Questions sur la facture</h2>
+        <div id="qaDisabled" class="empty">Analysez une facture pour poser des questions à son sujet.</div>
+        <div id="qaPanel" class="hidden">
+          <div class="chat" id="chat"></div>
+          <div class="row">
+            <input type="text" id="qaInput" placeholder="ex. Cette dépense est-elle déductible ?" style="flex:1" />
+            <button id="qaSend">Envoyer</button>
+          </div>
+          <p class="hint">Réponses ancrées uniquement sur l'OCR stocké + l'historique de la conversation (aucun RAG).</p>
+        </div>
+      </div>
+
+      <!-- Liste factures -->
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <h2 style="margin:0">Mes factures</h2>
+          <button class="ghost" id="refreshBtn" style="padding:6px 12px;font-size:13px">↻ Rafraîchir</button>
+        </div>
+        <div class="invlist mt" id="invList"><div class="empty">Aucune facture chargée.</div></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Petit client de l'API Agent 3. Servi en MÊME ORIGINE que FastAPI -> pas de CORS.
+// ---------------------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+const state = { file: null, threadId: null, documentId: null, completed: false };
+
+const FIELD_LABELS = {
+  invoice_number: "N° de facture", issuer_name: "Émetteur",
+  issuer_tax_id: "Matricule fiscal (émetteur)", client_name: "Client",
+  issue_date: "Date d'émission", subtotal_ht: "Sous-total HT",
+  vat_amount: "TVA", total_ttc: "Total TTC", currency: "Devise",
+};
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2600);
+}
+function money(v, cur) {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  if (Number.isNaN(n)) return esc(v);
+  return n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + (cur ? " " + esc(cur) : "");
+}
+function val(v) { return (v === null || v === undefined || v === "") ? '<span class="muted">null</span>' : esc(v); }
+
+// --- Config persistée -------------------------------------------------------
+$("userId").value = localStorage.getItem("lm_user") || "demo-user";
+$("activite").value = localStorage.getItem("lm_act") || "";
+$("userId").addEventListener("input", e => localStorage.setItem("lm_user", e.target.value));
+$("activite").addEventListener("input", e => localStorage.setItem("lm_act", e.target.value));
+
+// --- Santé ------------------------------------------------------------------
+async function ping() {
+  try {
+    const r = await fetch("/health");
+    if (r.ok) { $("healthDot").className = "dot ok"; $("healthTxt").textContent = "API en ligne"; }
+    else throw 0;
+  } catch { $("healthDot").className = "dot ko"; $("healthTxt").textContent = "API injoignable"; }
+}
+
+// --- Sélection de fichier ---------------------------------------------------
+const drop = $("drop"), fileInput = $("fileInput");
+drop.addEventListener("click", () => fileInput.click());
+drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", e => {
+  e.preventDefault(); drop.classList.remove("over");
+  if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener("change", e => { if (e.target.files.length) setFile(e.target.files[0]); });
+$("fileRemove").addEventListener("click", () => setFile(null));
+function setFile(f) {
+  state.file = f;
+  $("fileChip").classList.toggle("show", !!f);
+  if (f) $("fileName").textContent = f.name + "  ·  " + (f.size/1024).toFixed(0) + " Ko";
+  $("analyzeBtn").disabled = !f;
+}
+
+// --- Analyse ----------------------------------------------------------------
+$("analyzeBtn").addEventListener("click", analyze);
+async function analyze() {
+  const userId = $("userId").value.trim();
+  if (!userId) { toast("Renseignez un identifiant utilisateur."); return; }
+  if (!state.file) { toast("Sélectionnez une facture."); return; }
+
+  const btn = $("analyzeBtn");
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Analyse en cours…';
+  $("analyzeHint").textContent = "OCR + extraction + analyse… (peut prendre quelques secondes)";
+  $("pendingCard").classList.add("hidden");
+  $("resultCard").classList.add("hidden");
+
+  const fd = new FormData();
+  fd.append("user_id", userId);
+  fd.append("file", state.file);
+  fd.append("activite", $("activite").value.trim());
+
+  try {
+    const r = await fetch("/analyze", { method: "POST", body: fd });
+    const data = await r.json();
+    handleAnalyze(data);
+  } catch (e) {
+    toast("Erreur réseau : " + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "Analyser la facture"; $("analyzeHint").textContent = "";
+  }
+}
+
+// Aiguille une AnalyzeResponse selon son statut (completed / en_attente / erreur).
+function handleAnalyze(data) {
+  state.threadId = data.thread_id || state.threadId;
+  state.documentId = data.document_id || state.documentId;
+
+  if (data.status === "erreur") {
+    $("resultCard").classList.remove("hidden");
+    $("resultBody").innerHTML = `<div class="badge red">Erreur</div><p>${esc(data.error || "Erreur inconnue.")}</p>`;
+    return;
+  }
+  if (data.status === "en_attente_utilisateur") { renderPending(data.pending); return; }
+  if (data.status === "completed") { renderResult(data); }
+}
+
+// --- HITL : champ manquant OU doublon --------------------------------------
+function renderPending(p) {
+  $("pendingCard").classList.remove("hidden");
+  const body = $("pendingBody");
+
+  if (p.type === "doublon") {
+    body.innerHTML = `
+      <p>${esc(p.question)}</p>
+      <div class="dupgrid">
+        <div class="dupcol"><h3>Facture existante</h3>${miniInvoice(p.existing_invoice)}</div>
+        <div class="dupcol new"><h3>Nouvelle facture</h3>${miniInvoice(p.new_invoice)}</div>
+      </div>
+      <div class="row mt">
+        <button class="danger" id="dupYes">Oui, c'est un doublon (ignorer)</button>
+        <button class="ok" id="dupNo">Non, l'enregistrer quand même</button>
+      </div>`;
+    $("dupYes").addEventListener("click", () => sendAnswer("oui"));
+    $("dupNo").addEventListener("click", () => sendAnswer("non"));
+  } else {
+    const label = FIELD_LABELS[p.field] || p.field || "champ";
+    body.innerHTML = `
+      <p>${esc(p.question)}</p>
+      <label for="fieldInput">Votre réponse — ${esc(label)}</label>
+      <input type="text" id="fieldInput" placeholder="Saisissez la valeur, ou « passer »" />
+      <div class="row mt">
+        <button id="fieldSend">Répondre</button>
+        <button class="ghost" id="fieldSkip">Passer ce champ</button>
+      </div>`;
+    const inp = $("fieldInput"); inp.focus();
+    $("fieldSend").addEventListener("click", () => { if (inp.value.trim()) sendAnswer(inp.value.trim()); else toast("Saisissez une valeur ou cliquez « Passer »."); });
+    $("fieldSkip").addEventListener("click", () => sendAnswer("passer"));
+    inp.addEventListener("keydown", e => { if (e.key === "Enter" && inp.value.trim()) sendAnswer(inp.value.trim()); });
+  }
+}
+
+function miniInvoice(inv) {
+  inv = inv || {};
+  const rows = ["invoice_number","issuer_name","issue_date","total_ttc"].map(f => {
+    const v = f === "total_ttc" ? money(inv[f], inv.currency) : inv[f];
+    return `<tr><td class="k">${esc(FIELD_LABELS[f])}</td><td class="v">${v ? v : '<span class="muted">null</span>'}</td></tr>`;
+  }).join("");
+  return `<table class="kv">${rows}</table>`;
+}
+
+// Reprend le thread interrompu avec la réponse de l'utilisateur.
+async function sendAnswer(answer) {
+  $("pendingCard").classList.add("hidden");
+  toast("Envoi…");
+  try {
+    const r = await fetch("/answer", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ thread_id: state.threadId, answer }),
+    });
+    const data = await r.json();
+    if (data.status === "erreur") { toast(data.error || "Erreur"); return; }
+    // La reprise d'un flux d'analyse est portée par data.analyze (même forme qu'AnalyzeResponse).
+    if (data.analyze) handleAnalyze(data.analyze);
+    else handleAnalyze(data);
+  } catch (e) { toast("Erreur réseau : " + e.message); }
+}
+
+// --- Résultat final ---------------------------------------------------------
+function renderResult(data) {
+  $("resultCard").classList.remove("hidden");
+  const inv = data.invoice || {};
+  const cur = inv.currency;
+
+  let statusBadge = "";
+  if (data.saved) statusBadge = '<span class="badge green">✓ Enregistrée en base</span>';
+  else if (data.duplicate_skipped) statusBadge = '<span class="badge amber">Doublon confirmé — insertion ignorée</span>';
+
+  const kvFields = ["invoice_number","issuer_name","issuer_tax_id","client_name","issue_date","subtotal_ht","vat_amount","total_ttc","currency"];
+  const kv = kvFields.map(f => {
+    let v = inv[f];
+    if (["subtotal_ht","vat_amount","total_ttc"].includes(f)) v = money(v, f === "currency" ? null : cur);
+    else v = val(v);
+    return `<tr><td class="k">${esc(FIELD_LABELS[f])}</td><td class="v">${v ?? '<span class="muted">null</span>'}</td></tr>`;
+  }).join("");
+
+  let lines = "";
+  if (inv.line_items && inv.line_items.length) {
+    const body = inv.line_items.map(li => `
+      <tr>
+        <td>${val(li.description)}</td>
+        <td class="num">${li.quantity ?? ""}</td>
+        <td class="num">${money(li.unit_price, cur) ?? ""}</td>
+        <td class="num">${money(li.total, cur) ?? ""}</td>
+      </tr>`).join("");
+    lines = `<table class="lines"><thead><tr><th>Désignation</th><th class="num">Qté</th><th class="num">P.U.</th><th class="num">Total</th></tr></thead><tbody>${body}</tbody></table>`;
+  }
+
+  const cat = data.expense_category ? `<span class="badge cat">🏷 ${esc(data.expense_category)}</span>` : "";
+  const ded = data.deductible === true
+    ? '<span class="badge green">✓ Déductible</span>'
+    : data.deductible === false ? '<span class="badge red">✗ Non déductible</span>' : "";
+
+  $("resultBody").innerHTML = `
+    <div class="row" style="margin-bottom:12px">${statusBadge} ${cat} ${ded}</div>
+    <table class="kv">${kv}</table>
+    ${lines}
+    ${data.deductibility_reason ? `<p class="hint" style="margin-top:10px"><b>Déductibilité :</b> ${esc(data.deductibility_reason)}</p>` : ""}
+    ${data.analysis ? `<div class="analysis"><b>Analyse</b><br>${esc(data.analysis)}</div>` : ""}
+  `;
+
+  // Active le Q&A sur cette facture.
+  state.completed = true;
+  $("qaDisabled").classList.add("hidden");
+  $("qaPanel").classList.remove("hidden");
+  $("chat").innerHTML = "";
+  addMsg("bot", "Facture analysée. Posez-moi une question à son sujet.");
+  loadInvoices();
+}
+
+// --- Q&A --------------------------------------------------------------------
+$("qaSend").addEventListener("click", askQuestion);
+$("qaInput").addEventListener("keydown", e => { if (e.key === "Enter") askQuestion(); });
+function addMsg(who, text) {
+  const d = document.createElement("div");
+  d.className = "msg " + (who === "user" ? "user" : "bot");
+  d.textContent = text;
+  $("chat").appendChild(d); $("chat").scrollTop = $("chat").scrollHeight;
+}
+async function askQuestion() {
+  const q = $("qaInput").value.trim();
+  if (!q) return;
+  if (!state.threadId) { toast("Analysez d'abord une facture."); return; }
+  addMsg("user", q); $("qaInput").value = "";
+  const typing = document.createElement("div"); typing.className = "msg bot"; typing.textContent = "…";
+  $("chat").appendChild(typing); $("chat").scrollTop = $("chat").scrollHeight;
+  try {
+    // Sur un thread déjà terminé, /answer bascule en mode Q&A (OCR stocké + historique).
+    const r = await fetch("/answer", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ thread_id: state.threadId, answer: q }),
+    });
+    const data = await r.json();
+    typing.remove();
+    if (data.answer) addMsg("bot", data.answer);
+    else if (data.analyze) { addMsg("bot", "(reprise du flux d'analyse)"); handleAnalyze(data.analyze); }
+    else addMsg("bot", data.error || "Pas de réponse.");
+  } catch (e) { typing.remove(); addMsg("bot", "Erreur réseau : " + e.message); }
+}
+
+// --- Liste des factures -----------------------------------------------------
+$("refreshBtn").addEventListener("click", loadInvoices);
+async function loadInvoices() {
+  const userId = $("userId").value.trim();
+  if (!userId) return;
+  try {
+    const r = await fetch("/invoices/" + encodeURIComponent(userId));
+    const items = await r.json();
+    const list = $("invList");
+    if (!Array.isArray(items) || !items.length) { list.innerHTML = '<div class="empty">Aucune facture pour cet utilisateur.</div>'; return; }
+    list.innerHTML = items.map(it => {
+      const inv = it.invoice || {};
+      const ded = it.deductible === true ? '<span class="badge green">déductible</span>'
+        : it.deductible === false ? '<span class="badge red">non déductible</span>' : "";
+      const cat = it.expense_category ? `<span class="badge cat">${esc(it.expense_category)}</span>` : "";
+      return `<div class="invitem">
+        <div class="top">
+          <span class="ttl">${val(inv.issuer_name)} · ${val(inv.invoice_number)}</span>
+          <span class="ttl">${money(inv.total_ttc, inv.currency) || ""}</span>
+        </div>
+        <div class="meta">${val(inv.issue_date)}</div>
+        <div class="row" style="margin-top:6px">${cat} ${ded}</div>
+      </div>`;
+    }).join("");
+  } catch (e) { toast("Impossible de charger les factures."); }
+}
+
+// --- Init -------------------------------------------------------------------
+ping(); loadInvoices(); setInterval(ping, 15000);
+</script>
+</body>
+</html>
