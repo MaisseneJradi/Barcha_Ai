@@ -139,6 +139,12 @@
   .dupcol h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--ink-soft); }
   .dupcol.new { border-color: var(--accent); }
 
+  .suggests-label { font-size: 12px; color: var(--ink-soft); margin: 2px 0 6px; }
+  .suggests { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+  .sugg { background: var(--accent-soft); color: var(--accent-strong); border: 1px solid var(--border);
+    border-radius: 999px; padding: 6px 13px; font-size: 13px; font-weight: 650; cursor: pointer; }
+  .sugg:hover { filter: none; border-color: var(--accent); background: var(--accent-soft); }
+
   .chat { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; margin-bottom: 12px; }
   .msg { padding: 9px 12px; border-radius: 12px; font-size: 13.5px; max-width: 88%; white-space: pre-wrap; }
   .msg.user { align-self: flex-end; background: var(--accent-strong); color: #fff; border-bottom-right-radius: 4px; }
@@ -376,14 +382,22 @@ function renderPending(p) {
     $("dupNo").addEventListener("click", () => sendAnswer("non"));
   } else {
     const label = FIELD_LABELS[p.field] || p.field || "champ";
+    const sugg = Array.isArray(p.suggestions) ? p.suggestions : [];
+    const chips = sugg.length
+      ? `<div class="suggests-label">💡 Propositions déduites du document — cliquez pour approuver :</div>
+         <div class="suggests">${sugg.map((s, i) => `<button class="sugg" data-i="${i}">✓ ${esc(s)}</button>`).join("")}</div>`
+      : "";
     body.innerHTML = `
       <p>${esc(p.question)}</p>
-      <label for="fieldInput">Votre réponse — ${esc(label)}</label>
+      ${chips}
+      <label for="fieldInput">${sugg.length ? "Ou saisissez vous-même" : "Votre réponse"} — ${esc(label)}</label>
       <input type="text" id="fieldInput" placeholder="Saisissez la valeur, ou « passer »" />
       <div class="row mt">
         <button id="fieldSend">Répondre</button>
         <button class="ghost" id="fieldSkip">Passer ce champ</button>
       </div>`;
+    // Clic sur une proposition = approbation directe (envoi de la valeur).
+    body.querySelectorAll(".sugg").forEach(b => b.addEventListener("click", () => sendAnswer(sugg[+b.dataset.i])));
     const inp = $("fieldInput"); inp.focus();
     $("fieldSend").addEventListener("click", () => { if (inp.value.trim()) sendAnswer(inp.value.trim()); else toast("Saisissez une valeur ou cliquez « Passer »."); });
     $("fieldSkip").addEventListener("click", () => sendAnswer("passer"));

@@ -11,6 +11,19 @@ from .config import EXPENSE_CATEGORIES
 
 _CATS = ", ".join(EXPENSE_CATEGORIES)
 
+# Libellés français des champs, partagés par la question HITL et les suggestions.
+_FIELD_LABELS = {
+    "invoice_number": "le numéro de la facture",
+    "issuer_name": "le nom de l'émetteur (fournisseur)",
+    "issuer_tax_id": "le matricule fiscal / SIREN de l'émetteur",
+    "issue_date": "la date d'émission (JJ/MM/AAAA)",
+    "total_ttc": "le montant total TTC",
+    "subtotal_ht": "le sous-total HT",
+    "vat_amount": "le montant de TVA",
+    "currency": "la devise",
+    "client_name": "le nom du client",
+}
+
 
 # --- Détection de langue -----------------------------------------------------
 def detect_language(ocr_text: str):
@@ -67,22 +80,40 @@ def extract_fields(ocr_text: str):
 # --- Question de champ manquant (HITL) --------------------------------------
 def ask_missing_field(field: str, invoice: Dict) -> str:
     """Formule, en français, la question posée à l'utilisateur pour un champ."""
-    libelles = {
-        "invoice_number": "le numéro de la facture",
-        "issuer_name": "le nom de l'émetteur (fournisseur)",
-        "issuer_tax_id": "le matricule fiscal / SIREN de l'émetteur",
-        "issue_date": "la date d'émission (JJ/MM/AAAA)",
-        "total_ttc": "le montant total TTC",
-        "subtotal_ht": "le sous-total HT",
-        "vat_amount": "le montant de TVA",
-        "currency": "la devise",
-        "client_name": "le nom du client",
-    }
-    libelle = libelles.get(field, field)
+    libelle = _FIELD_LABELS.get(field, field)
     return (
         f"Je n'ai pas pu lire {libelle} sur la facture. "
-        f"Pouvez-vous me le préciser ? (répondez « passer » pour l'ignorer)"
+        f"Approuvez une proposition ou saisissez la valeur "
+        f"(répondez « passer » pour l'ignorer)."
     )
+
+
+# --- Suggestions de valeurs pour champs manquants (HITL assisté) -------------
+def suggest_field_values(fields: List[str], ocr_text: str, invoice: Dict):
+    """Demande au LLM des valeurs CANDIDATES lues dans le document, par champ.
+
+    Contrairement à l'extraction (qui met `null` en cas de doute), ici on cherche
+    à SURFACER des candidats plausibles que l'utilisateur validera (HITL). Rien
+    n'est retenu sans approbation humaine ; si le texte n'offre rien, on renvoie
+    une liste vide pour le champ.
+    """
+    demandes = "; ".join(f'"{f}" = {_FIELD_LABELS.get(f, f)}' for f in fields)
+    system = (
+        "Tu aides à compléter une facture dont certains champs n'ont pas pu être "
+        "extraits avec certitude. Pour CHAQUE champ demandé, propose de 0 à 3 "
+        "valeurs CANDIDATES effectivement présentes ou déductibles du texte OCR. "
+        "Montants en nombres (sans symbole), dates au format JJ/MM/AAAA. "
+        "NE DEVINE PAS au hasard : si rien de plausible n'apparaît, renvoie une "
+        "liste vide pour ce champ. Classe les candidats du plus au moins probable.\n"
+        'Réponds STRICTEMENT en JSON, une clé par champ demandé : '
+        '{"<champ>": ["candidat1", "candidat2"], ...}.'
+    )
+    user = (
+        f"Champs à compléter : {demandes}\n"
+        f"Déjà extrait (pour contexte) : {invoice}\n\n"
+        f"Texte OCR de la facture :\n{ocr_text[:6000]}"
+    )
+    return system, user
 
 
 # --- Analyse rédigée (une analyse, pas un résumé) ----------------------------

@@ -98,6 +98,7 @@ def _build_analyze_response(graph, config, thread_id: str) -> AnalyzeResponse:
             type=payload.get("type"),
             question=payload.get("question", ""),
             field=payload.get("field"),
+            suggestions=payload.get("suggestions"),
             existing_invoice=payload.get("existing_invoice"),
             new_invoice=payload.get("new_invoice"),
         )

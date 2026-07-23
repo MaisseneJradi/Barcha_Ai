@@ -123,7 +123,36 @@ def extract_fields_node(state: Dict[str, Any], deps: Deps) -> Dict[str, Any]:
     system, user = prompts.extract_fields(state["ocr_text"])
     data = deps.mistral.chat_json(MODEL_LARGE, system, user)
     inv = _safe_invoice(data)
-    return {"invoice": inv.model_dump(), "missing_fields": _compute_missing(inv)}
+    missing = _compute_missing(inv)
+    out: Dict[str, Any] = {"invoice": inv.model_dump(), "missing_fields": missing}
+    # Suggestions calculées ICI (une seule fois) : le nœud d'interruption se
+    # ré-exécute à chaque reprise et ne doit donc PAS relancer d'appel LLM.
+    if missing:
+        out["field_suggestions"] = _suggest_fields(deps, missing, state["ocr_text"], inv.model_dump())
+    return out
+
+
+def _suggest_fields(deps: Deps, fields: List[str], ocr_text: str, invoice: Dict[str, Any]) -> Dict[str, List[str]]:
+    """Propose des valeurs candidates par champ manquant (jamais retenues sans
+    approbation humaine). Tolérant aux pannes : en cas d'échec, aucune suggestion
+    — le HITL en saisie libre reste disponible."""
+    try:
+        system, user = prompts.suggest_field_values(fields, ocr_text, invoice)
+        result = deps.mistral.chat_json(MODEL_LARGE, system, user)
+    except Exception:  # noqa: BLE001 - fonctionnalité d'assistance, non bloquante
+        return {}
+    out: Dict[str, List[str]] = {}
+    for f in fields:
+        raw = result.get(f)
+        if isinstance(raw, list):
+            vals = [str(v).strip() for v in raw if str(v).strip()]
+        elif isinstance(raw, (str, int, float)) and str(raw).strip():
+            vals = [str(raw).strip()]
+        else:
+            vals = []
+        if vals:
+            out[f] = vals[:3]
+    return out
 
 
 def ask_missing_field_node(state: Dict[str, Any], deps: Deps) -> Dict[str, Any]:
@@ -146,7 +175,11 @@ def ask_missing_field_node(state: Dict[str, Any], deps: Deps) -> Dict[str, Any]:
 
     field = missing[0]
     question = prompts.ask_missing_field(field, invoice)
-    answer = interrupt({"type": "champ_manquant", "field": field, "question": question})
+    # Lecture PURE de l'état (suggestions pré-calculées) : sûr à la ré-exécution.
+    suggestions = (state.get("field_suggestions") or {}).get(field, [])
+    answer = interrupt(
+        {"type": "champ_manquant", "field": field, "question": question, "suggestions": suggestions}
+    )
 
     remaining = missing[1:]
     if answer is not None and str(answer).strip().lower() not in _SKIP_WORDS:

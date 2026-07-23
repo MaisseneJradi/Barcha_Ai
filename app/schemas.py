@@ -90,6 +90,7 @@ class GraphState(TypedDict, total=False):
 
     invoice: Dict[str, Any]          # Invoice sérialisée (dict), mise à jour incrémentale
     missing_fields: List[str]
+    field_suggestions: Dict[str, List[str]]  # candidats par champ manquant (HITL assisté)
 
     analysis: Optional[str]
     expense_category: Optional[str]
@@ -114,6 +115,7 @@ class PendingQuestion(BaseModel):
     type: PendingType
     question: str
     field: Optional[str] = None
+    suggestions: Optional[List[str]] = None             # champ manquant : candidats proposés
     existing_invoice: Optional[Dict[str, Any]] = None   # doublon : l'existant
     new_invoice: Optional[Dict[str, Any]] = None        # doublon : le nouveau
 

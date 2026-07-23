@@ -61,12 +61,14 @@ def test_happy_path_and_duplicate_confirmation():
     assert len(db.list_invoices("u1")) == 1  # toujours une seule facture
 
 
-def test_missing_field_interrupt_in_french_then_resume():
-    """Total TTC manquant -> question en français -> reprise correcte."""
+def test_missing_field_interrupt_offers_suggestions_then_resume():
+    """Total TTC manquant -> question FR + suggestions proposées -> approbation."""
     db = make_db()
     invoice = copy.deepcopy(COMPLETE_INVOICE)
     invoice["total_ttc"] = None  # champ obligatoire manquant
-    graph, _ = make_graph(FakeMistral(invoice=invoice), db)
+    # Le LLM propose des candidats lus dans le document (HITL assisté).
+    mistral = FakeMistral(invoice=invoice, suggestions={"total_ttc": ["1234,56", "1200"]})
+    graph, _ = make_graph(mistral, db)
 
     cfg = run(graph, initial_state("u2"), "t-missing")
     values, ints = inspect(graph, cfg)
@@ -74,11 +76,12 @@ def test_missing_field_interrupt_in_french_then_resume():
     q = ints[0].value
     assert q["type"] == "champ_manquant"
     assert q["field"] == "total_ttc"
-    # Question posée en français
-    assert "Pouvez-vous" in q["question"]
+    # Question en français + propositions candidates remontées à l'utilisateur
+    assert "passer" in q["question"].lower()
+    assert q["suggestions"] == ["1234,56", "1200"]
     assert values["status"] != "completed"
 
-    # Reprise avec un montant saisi à la française (virgule décimale)
+    # L'utilisateur APPROUVE la première proposition (saisie française -> float)
     run(graph, Command(resume="1234,56"), "t-missing")
     values, ints = inspect(graph, cfg)
     assert not ints

@@ -34,6 +34,7 @@ class FakeMistral:
         translation: Optional[str] = None,
         qa: str = "D'après la facture, le montant TTC est bien celui indiqué.",
         ocr_text: str = "FACTURE — texte OCR de test\nTotal TTC ...",
+        suggestions: Optional[Dict[str, List[str]]] = None,
     ):
         self.invoice = invoice
         self.language = language
@@ -44,13 +45,20 @@ class FakeMistral:
         self.translation = translation
         self.qa = qa
         self.ocr_text = ocr_text
+        # Candidats proposés pour les champs manquants (HITL assisté).
+        self.suggestions = suggestions or {}
 
     def ocr(self, data: bytes, mime: str) -> str:
         return self.ocr_text
 
-    def chat_json(self, model: str, system: str, user: str, *, temperature: float = 0.0) -> Dict[str, Any]:
+    def chat_json(
+        self, model: str, system: str, user: str, *,
+        temperature: float = 0.0, fallback_model: Optional[str] = None,
+    ) -> Dict[str, Any]:
         if "détecteur de langue" in system:
             return {"language": self.language}
+        if "CANDIDATES" in system:  # prompt de suggestions de champs manquants
+            return dict(self.suggestions)
         if "classes la nature" in system:
             return {"category": self.category}
         if "extracteur d'informations" in system:
@@ -59,7 +67,10 @@ class FakeMistral:
             return {"deductible": self.deductible, "reason": self.reason}
         raise AssertionError(f"Prompt chat_json inattendu : {system[:60]!r}")
 
-    def chat_text(self, model: str, system: str, user: str, *, temperature: float = 0.0) -> str:
+    def chat_text(
+        self, model: str, system: str, user: str, *,
+        temperature: float = 0.0, fallback_model: Optional[str] = None,
+    ) -> str:
         if "traducteur" in system:
             return self.translation if self.translation is not None else user
         if "COURTE ANALYSE" in system:
