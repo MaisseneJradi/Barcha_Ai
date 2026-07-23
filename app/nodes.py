@@ -106,7 +106,8 @@ def ocr_node(state: Dict[str, Any], deps: Deps) -> Dict[str, Any]:
 
 def detect_language_node(state: Dict[str, Any], deps: Deps) -> Dict[str, Any]:
     system, user = prompts.detect_language(state["ocr_text"])
-    result = deps.mistral.chat_json(MODEL_SMALL, system, user)
+    # Bascule sur le grand modèle si `small` est saturé (429 capacity).
+    result = deps.mistral.chat_json(MODEL_SMALL, system, user, fallback_model=MODEL_LARGE)
     lang = str(result.get("language", "")).lower()[:2] or "fr"
     return {"detected_language": lang}
 
@@ -161,7 +162,8 @@ def write_analysis_node(state: Dict[str, Any], deps: Deps) -> Dict[str, Any]:
 
 def classify_expense_node(state: Dict[str, Any], deps: Deps) -> Dict[str, Any]:
     system, user = prompts.classify_expense(state["ocr_text"], state["invoice"])
-    result = deps.mistral.chat_json(MODEL_SMALL, system, user)
+    # Bascule sur le grand modèle si `small` est saturé (429 capacity).
+    result = deps.mistral.chat_json(MODEL_SMALL, system, user, fallback_model=MODEL_LARGE)
     category = str(result.get("category", "")).strip().lower()
     if category not in EXPENSE_CATEGORIES:
         category = "autre"
