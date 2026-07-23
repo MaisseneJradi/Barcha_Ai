@@ -63,7 +63,10 @@ def extract_fields(ocr_text: str):
         '  "subtotal_ht": number|null,\n'
         '  "vat_amount": number|null,\n'
         '  "total_ttc": number|null,\n'
-        '  "currency": string|null\n'
+        '  "currency": string|null,\n'
+        '  "paid": true|false|null,          // la facture est-elle indiquée réglée/acquittée/payée ?\n'
+        '  "due_date": string|null,          // date d\'échéance de paiement si indiquée (ISO YYYY-MM-DD)\n'
+        '  "payment_terms_days": number|null // délai de paiement en jours si mentionné (« à 30 jours » -> 30)\n'
         "}\n"
         "RÈGLES IMPÉRATIVES :\n"
         "- Comprends le SENS de chaque valeur d'après le contexte et la mise en "
@@ -71,7 +74,9 @@ def extract_fields(ocr_text: str):
         "date d'émission sans que le mot « date » apparaisse).\n"
         "- Si une valeur est absente, illisible ou réellement ambiguë : mets "
         "null. N'INVENTE JAMAIS, ne devine pas.\n"
-        "- Les montants sont des nombres (pas de symbole monétaire)."
+        "- Les montants sont des nombres (pas de symbole monétaire).\n"
+        "- paid : true seulement si la facture porte une mention claire (payée, "
+        "acquittée, réglée, « payment received ») ; sinon false ou null."
     )
     user = f"Texte OCR de la facture :\n\n{ocr_text}"
     return system, user
@@ -117,17 +122,26 @@ def suggest_field_values(fields: List[str], ocr_text: str, invoice: Dict):
 
 
 # --- Analyse rédigée (une analyse, pas un résumé) ----------------------------
-def write_analysis(ocr_text: str, invoice: Dict):
+def write_analysis(ocr_text: str, invoice: Dict, payment_note: str = None, incoherences: List[str] = None):
     system = (
         "Tu es un assistant comptable pour micro-entrepreneurs français "
         "(créateurs de contenu). Rédige une COURTE ANALYSE en français de cette "
         "facture — PAS un résumé. Ne répète pas la liste des champs : explique "
         "ce que cette dépense signifie pour l'activité, ce qui est notable "
         "(montant, nature, TVA, régularité), et ce à quoi il faut faire "
-        "attention. 3 à 5 phrases, ton professionnel et concret."
+        "attention. 3 à 5 phrases, ton professionnel et concret.\n"
+        "- Si une NOTE DE PAIEMENT est fournie, reprends-la telle quelle "
+        "(garde la date exacte et le nombre de jours) dans l'analyse.\n"
+        "- Si des INCOHÉRENCES sont fournies, signale-les explicitement comme "
+        "des points de vigilance (elles ont été calculées, ne les recalcule pas)."
     )
+    faits = ""
+    if payment_note:
+        faits += f"\nNOTE DE PAIEMENT (à reprendre telle quelle) : {payment_note}"
+    if incoherences:
+        faits += "\nINCOHÉRENCES DÉTECTÉES : " + " ; ".join(incoherences)
     user = (
-        f"Champs extraits : {invoice}\n\n"
+        f"Champs extraits : {invoice}{faits}\n\n"
         f"Texte de la facture :\n{ocr_text[:6000]}"
     )
     return system, user

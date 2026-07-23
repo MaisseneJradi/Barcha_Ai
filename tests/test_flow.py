@@ -129,6 +129,28 @@ def test_followup_qa_grounded_on_stored_ocr_and_history():
     assert "user" in roles and roles.count("assistant") >= 2
 
 
+def test_incoherences_and_payment_are_deterministic():
+    """Cohérence arithmétique + échéance calculées sans LLM."""
+    from app.nodes import compute_incoherences, compute_payment
+    from app.schemas import Invoice
+
+    # Total incohérent (100 + 20 != 200) -> anomalie détectée
+    bad = Invoice(subtotal_ht=100, vat_amount=20, total_ttc=200, currency="EUR",
+                  issue_date="2026-02-12", payment_terms_days=30, paid=False)
+    issues = compute_incoherences(bad)
+    assert any("TTC" in i for i in issues), issues
+
+    pay = compute_payment(bad)
+    assert pay["paid"] is False
+    # Échéance = date d'émission + 30 jours (déterministe)
+    assert pay["payment_date"] == "2026-03-14"
+    assert "14/03/2026" in pay["note"]  # date FR reprise dans la note
+
+    # Facture cohérente -> aucune incohérence
+    good = Invoice(subtotal_ht=100, vat_amount=20, total_ttc=120, currency="EUR")
+    assert compute_incoherences(good) == []
+
+
 def test_no_rag_anywhere_in_codebase():
     """Garde-fou DoD : aucun vector store / embedding / RAG dans app/."""
     app_dir = pathlib.Path(__file__).resolve().parent.parent / "app"

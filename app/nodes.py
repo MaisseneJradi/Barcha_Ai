@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from langgraph.types import interrupt  # HITL
@@ -88,6 +88,100 @@ def _safe_invoice(data: Any) -> Invoice:
 
 def _compute_missing(inv: Invoice) -> List[str]:
     return [f for f in MANDATORY_FIELDS if getattr(inv, f) in (None, "")]
+
+
+# ---------------------------------------------------------------------------
+# Vérifications DÉTERMINISTES (aucun LLM) : cohérence arithmétique + paiement
+# ---------------------------------------------------------------------------
+def _parse_iso(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y"):
+        try:
+            return datetime.strptime(str(value).strip(), fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _fmt_fr(value: Any) -> str:
+    d = _parse_iso(value)
+    return d.strftime("%d/%m/%Y") if d else str(value)
+
+
+def days_until(value: Any) -> Optional[int]:
+    """Nombre de jours (calendaires) d'ici la date donnée. Négatif si passée."""
+    d = _parse_iso(value)
+    return (d.date() - date.today()).days if d else None
+
+
+def _close(a: float, b: float) -> bool:
+    """Égalité monétaire tolérante (2 % ou 1 centime, le plus grand)."""
+    return abs(a - b) <= max(0.01, 0.02 * max(abs(a), abs(b)))
+
+
+def compute_incoherences(inv: Invoice) -> List[str]:
+    """Anomalies arithmétiques/structurelles d'une facture (déterministe)."""
+    issues: List[str] = []
+    st, tva, ttc = inv.subtotal_ht, inv.vat_amount, inv.total_ttc
+
+    if st is not None and tva is not None and ttc is not None and not _close(st + tva, ttc):
+        issues.append(
+            f"Total incohérent : HT {st} + TVA {tva} = {round(st + tva, 2)} ≠ TTC {ttc}."
+        )
+    # Somme des lignes vs sous-total HT
+    line_totals = [li.total for li in inv.line_items if li.total is not None]
+    if st is not None and line_totals and not _close(sum(line_totals), st):
+        issues.append(
+            f"Somme des lignes {round(sum(line_totals), 2)} ≠ sous-total HT {st}."
+        )
+    # Cohérence de chaque ligne : quantité × prix unitaire = total
+    for i, li in enumerate(inv.line_items, 1):
+        if li.quantity is not None and li.unit_price is not None and li.total is not None:
+            if not _close(li.quantity * li.unit_price, li.total):
+                issues.append(
+                    f"Ligne {i} : {li.quantity} × {li.unit_price} = "
+                    f"{round(li.quantity * li.unit_price, 2)} ≠ total {li.total}."
+                )
+    # Montants négatifs
+    for field, lib in (("subtotal_ht", "sous-total HT"), ("vat_amount", "TVA"), ("total_ttc", "total TTC")):
+        v = getattr(inv, field)
+        if v is not None and v < 0:
+            issues.append(f"Montant négatif suspect ({lib} = {v}).")
+    # Devise absente alors que des montants existent
+    if ttc is not None and not inv.currency:
+        issues.append("Devise absente alors que des montants sont présents.")
+    return issues
+
+
+def compute_payment(inv: Invoice) -> Dict[str, Any]:
+    """Statut de paiement + échéance déterministe.
+
+    Date d'échéance = due_date explicite, sinon date d'émission + délai (jours).
+    Produit une NOTE en français reprise telle quelle dans l'analyse.
+    """
+    due = inv.due_date
+    if not due and inv.issue_date and inv.payment_terms_days:
+        base = _parse_iso(inv.issue_date)
+        if base:
+            due = (base + timedelta(days=int(inv.payment_terms_days))).strftime("%Y-%m-%d")
+
+    d_until = days_until(due) if due else None
+    note: Optional[str] = None
+    if inv.paid is True:
+        note = "Facture déjà réglée."
+    elif due:
+        j = _fmt_fr(due)
+        if d_until is None:
+            note = f"Facture non payée — à régler le {j}."
+        elif d_until >= 0:
+            note = f"Facture non payée — à régler le {j} (dans {d_until} jour(s))."
+        else:
+            note = f"Facture non payée — échéance dépassée le {j} (retard de {-d_until} jour(s))."
+    elif inv.paid is False:
+        note = "Facture non payée — échéance non précisée."
+
+    return {"paid": inv.paid, "payment_date": due, "days_until": d_until, "note": note}
 
 
 # ---------------------------------------------------------------------------
@@ -188,9 +282,17 @@ def ask_missing_field_node(state: Dict[str, Any], deps: Deps) -> Dict[str, Any]:
 
 
 def write_analysis_node(state: Dict[str, Any], deps: Deps) -> Dict[str, Any]:
-    system, user = prompts.write_analysis(state["ocr_text"], state["invoice"])
+    # Vérifications déterministes AVANT l'analyse : leurs résultats sont des
+    # faits fournis au LLM (dates/incohérences déjà calculées, non recalculées).
+    inv = _safe_invoice(state.get("invoice") or {})
+    incoherences = compute_incoherences(inv)
+    payment = compute_payment(inv)
+    system, user = prompts.write_analysis(
+        state["ocr_text"], state["invoice"],
+        payment_note=payment.get("note"), incoherences=incoherences,
+    )
     analysis = deps.mistral.chat_text(MODEL_LARGE, system, user)
-    return {"analysis": analysis}
+    return {"analysis": analysis, "incoherences": incoherences, "payment": payment}
 
 
 def classify_expense_node(state: Dict[str, Any], deps: Deps) -> Dict[str, Any]:
@@ -248,6 +350,7 @@ def save_to_db_node(state: Dict[str, Any], deps: Deps) -> Dict[str, Any]:
         return {"status": "completed", "saved": False, "duplicate_skipped": True}
 
     inv = _safe_invoice(state.get("invoice") or {})
+    payment = state.get("payment") or {}
     doc = {
         "user_id": state["user_id"],
         "document_id": state["document_id"],
@@ -256,6 +359,12 @@ def save_to_db_node(state: Dict[str, Any], deps: Deps) -> Dict[str, Any]:
         "expense_category": state.get("expense_category"),
         "deductible": state.get("deductible"),
         "deductibility_reason": state.get("deductibility_reason"),
+        "incoherences": state.get("incoherences") or [],
+        # Paiement : on stocke la date d'échéance (absolue) ; le nombre de jours
+        # restant est recalculé à la lecture pour rester à jour.
+        "paid": payment.get("paid"),
+        "payment_date": payment.get("payment_date"),
+        "payment_note": payment.get("note"),
         "ocr_text": state.get("ocr_text"),
         "ocr_text_original": state.get("ocr_text_original"),
         "detected_language": state.get("detected_language"),

@@ -38,6 +38,10 @@ class Invoice(BaseModel):
     vat_amount: Optional[float] = None
     total_ttc: Optional[float] = None
     currency: Optional[str] = None
+    # Suivi de paiement (FR-18 : factures à régler).
+    paid: Optional[bool] = None                  # True si la facture est indiquée réglée
+    due_date: Optional[str] = None               # échéance explicite (ISO 'YYYY-MM-DD') si présente
+    payment_terms_days: Optional[int] = None     # délai de paiement en jours (ex. « à 30 jours » -> 30)
 
     def dedup_key(self) -> Dict[str, Any]:
         """Clé d'unicité (FR-12) : numéro + matricule + total TTC + date."""
@@ -96,6 +100,8 @@ class GraphState(TypedDict, total=False):
     expense_category: Optional[str]
     deductible: Optional[bool]
     deductibility_reason: Optional[str]
+    incoherences: List[str]              # anomalies déterministes détectées (❗)
+    payment: Dict[str, Any]             # {paid, payment_date, days_until, note}
 
     duplicate_candidate: Optional[Dict[str, Any]]
     duplicate_decision: Optional[str]   # 'confirme' | 'distinct' | None
@@ -130,6 +136,10 @@ class AnalyzeResponse(BaseModel):
     expense_category: Optional[str] = None
     deductible: Optional[bool] = None
     deductibility_reason: Optional[str] = None
+    incoherences: Optional[List[str]] = None
+    paid: Optional[bool] = None
+    payment_date: Optional[str] = None
+    payment_days_until: Optional[int] = None
     saved: Optional[bool] = None
     duplicate_skipped: Optional[bool] = None
     # Rempli si status == en_attente_utilisateur
@@ -154,6 +164,21 @@ class AnswerResponse(BaseModel):
     error: Optional[str] = None
 
 
+class QARequest(BaseModel):
+    """Question de suivi sur une facture déjà enregistrée (par document_id)."""
+
+    user_id: str
+    document_id: str
+    question: str
+
+
+class QAResponse(BaseModel):
+    status: Status
+    document_id: Optional[str] = None
+    answer: Optional[str] = None
+    error: Optional[str] = None
+
+
 class InvoiceListItem(BaseModel):
     document_id: str
     invoice: Invoice
@@ -161,4 +186,8 @@ class InvoiceListItem(BaseModel):
     expense_category: Optional[str] = None
     deductible: Optional[bool] = None
     deductibility_reason: Optional[str] = None
+    incoherences: Optional[List[str]] = None
+    paid: Optional[bool] = None
+    payment_date: Optional[str] = None
+    payment_days_until: Optional[int] = None
     created_at: Optional[str] = None

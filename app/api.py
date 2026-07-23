@@ -37,6 +37,8 @@ from .schemas import (
     Invoice,
     InvoiceListItem,
     PendingQuestion,
+    QARequest,
+    QAResponse,
     Status,
 )
 
@@ -109,6 +111,7 @@ def _build_analyze_response(graph, config, thread_id: str) -> AnalyzeResponse:
             pending=pending,
         )
 
+    payment: Dict[str, Any] = values.get("payment") or {}
     return AnalyzeResponse(
         status=Status.completed,
         thread_id=thread_id,
@@ -118,6 +121,10 @@ def _build_analyze_response(graph, config, thread_id: str) -> AnalyzeResponse:
         expense_category=values.get("expense_category"),
         deductible=values.get("deductible"),
         deductibility_reason=values.get("deductibility_reason"),
+        incoherences=values.get("incoherences"),
+        paid=payment.get("paid"),
+        payment_date=payment.get("payment_date"),
+        payment_days_until=nodes.days_until(payment.get("payment_date")),
         saved=values.get("saved"),
         duplicate_skipped=values.get("duplicate_skipped"),
     )
@@ -207,6 +214,24 @@ async def answer(req: AnswerRequest) -> AnswerResponse:
         return AnswerResponse(status=Status.erreur, thread_id=req.thread_id, error=str(exc))
 
 
+@app.post("/qa", response_model=QAResponse)
+async def qa(req: QARequest) -> QAResponse:
+    """Q&A sur une facture déjà enregistrée, ciblée par (user_id, document_id).
+
+    Indépendant du thread d'analyse : permet de questionner n'importe quelle
+    facture listée, y compris d'une session précédente. Ancré uniquement sur
+    l'OCR stocké + l'historique de conversation (aucun RAG).
+    """
+    deps: Deps = app.state.deps
+    try:
+        ans = await asyncio.to_thread(
+            nodes.answer_question, deps, req.user_id, req.document_id, req.question
+        )
+        return QAResponse(status=Status.completed, document_id=req.document_id, answer=ans)
+    except Exception as exc:  # noqa: BLE001 - frontière API : statut erreur
+        return QAResponse(status=Status.erreur, document_id=req.document_id, error=str(exc))
+
+
 @app.get("/invoices/{user_id}", response_model=List[InvoiceListItem])
 async def list_invoices(user_id: str) -> List[InvoiceListItem]:
     deps: Deps = app.state.deps
@@ -221,6 +246,10 @@ async def list_invoices(user_id: str) -> List[InvoiceListItem]:
                 expense_category=d.get("expense_category"),
                 deductible=d.get("deductible"),
                 deductibility_reason=d.get("deductibility_reason"),
+                incoherences=d.get("incoherences"),
+                paid=d.get("paid"),
+                payment_date=d.get("payment_date"),
+                payment_days_until=nodes.days_until(d.get("payment_date")),
                 created_at=d.get("created_at"),
             )
         )

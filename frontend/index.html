@@ -12,7 +12,7 @@
     --border: #e6e1d5;
     --ink: #2a2723;
     --ink-soft: #6b6459;
-    --accent: #9a7d3a;         /* or LedgerMind */
+    --accent: #9a7d3a;
     --accent-soft: #f3ead2;
     --accent-strong: #7d6529;
     --green: #2f8f5b;
@@ -80,6 +80,7 @@
     background: var(--surface-2); color: var(--ink); font: inherit; outline: none;
   }
   input[type=text]:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  input:disabled { opacity: .55; }
   .hint { font-size: 11.5px; color: var(--ink-soft); margin-top: 6px; }
 
   .drop {
@@ -119,9 +120,16 @@
   .badge.red { background: var(--red-bg); color: var(--red); }
   .badge.amber { background: var(--amber-bg); color: var(--amber); }
 
+  .alert { border: 1px solid var(--red); background: var(--red-bg); color: var(--red);
+    border-radius: 10px; padding: 10px 12px; margin-top: 12px; font-size: 13px; }
+  .alert b { display: block; margin-bottom: 4px; }
+  .alert ul { margin: 0; padding-left: 18px; }
+  .warn-icon { color: var(--red); font-weight: 700; }
+  .pay { font-size: 12px; color: var(--amber); font-weight: 650; }
+
   table.kv { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   table.kv td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  table.kv td.k { color: var(--ink-soft); width: 44%; }
+  table.kv td.k { color: var(--ink-soft); width: 46%; }
   table.kv td.v { font-weight: 550; }
   .muted { color: var(--ink-soft); font-style: italic; }
 
@@ -145,16 +153,47 @@
     border-radius: 999px; padding: 6px 13px; font-size: 13px; font-weight: 650; cursor: pointer; }
   .sugg:hover { filter: none; border-color: var(--accent); background: var(--accent-soft); }
 
-  .chat { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; margin-bottom: 12px; }
-  .msg { padding: 9px 12px; border-radius: 12px; font-size: 13.5px; max-width: 88%; white-space: pre-wrap; }
+  /* --- Mes factures : items dépliables --- */
+  .invlist { display: flex; flex-direction: column; gap: 10px; }
+  .inv { border: 1px solid var(--border); border-radius: 11px; background: var(--surface-2); overflow: hidden; }
+  .inv-head { width: 100%; text-align: left; background: transparent; color: var(--ink); border: 0;
+    padding: 12px 13px; display: flex; align-items: center; gap: 10px; cursor: pointer; font: inherit; }
+  .inv-head:hover { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+  .inv-head .chev { color: var(--ink-soft); transition: transform .2s; flex: 0 0 auto; }
+  .inv.open .inv-head .chev { transform: rotate(90deg); }
+  .inv-head .ci { flex: 1; min-width: 0; }
+  .inv-head .ci .ttl { font-weight: 650; font-size: 13.5px; }
+  .inv-head .ci .meta { font-size: 12px; color: var(--ink-soft); }
+  .inv-head .amt { font-weight: 650; font-size: 13.5px; white-space: nowrap; }
+  .inv-body { display: none; padding: 0 13px 13px; }
+  .inv.open .inv-body { display: block; }
+
+  /* --- Widget de chat flottant --- */
+  .fab { position: fixed; right: 22px; bottom: 22px; z-index: 40; width: 58px; height: 58px;
+    border-radius: 50%; padding: 0; font-size: 24px; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent), var(--accent-strong)); color: #fff;
+    box-shadow: 0 6px 22px rgba(40,35,28,.32); }
+  .fab .dot-live { position: absolute; top: 5px; right: 5px; width: 13px; height: 13px; border-radius: 50%;
+    background: var(--green); border: 2px solid var(--surface); display: none; }
+  .fab.targeted .dot-live { display: block; }
+  .chat-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 45; opacity: 0;
+    pointer-events: none; transition: opacity .2s; }
+  .chat-overlay.open { opacity: 1; pointer-events: auto; }
+  .chat-panel { position: fixed; top: 0; right: 0; z-index: 46; height: 100vh; width: 420px; max-width: 92vw;
+    background: var(--surface); border-left: 1px solid var(--border); box-shadow: -8px 0 34px rgba(0,0,0,.18);
+    display: flex; flex-direction: column; transform: translateX(100%); transition: transform .25s ease; }
+  .chat-panel.open { transform: translateX(0); }
+  .chat-header { padding: 15px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 10px; }
+  .chat-header .info { flex: 1; min-width: 0; }
+  .chat-header .t { font-weight: 700; font-size: 15px; }
+  .chat-header .sub { font-size: 12.5px; color: var(--accent-strong); margin-top: 3px; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chat-header .close { background: transparent; color: var(--ink-soft); border: 0; font-size: 20px; padding: 0 4px; }
+  .chat-body { flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+  .chat-footer { padding: 12px 16px 14px; border-top: 1px solid var(--border); }
+  .msg { padding: 9px 12px; border-radius: 12px; font-size: 13.5px; max-width: 90%; white-space: pre-wrap; }
   .msg.user { align-self: flex-end; background: var(--accent-strong); color: #fff; border-bottom-right-radius: 4px; }
   .msg.bot { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
-
-  .invlist { display: flex; flex-direction: column; gap: 10px; }
-  .invitem { border: 1px solid var(--border); border-radius: 10px; padding: 11px 12px; background: var(--surface-2); }
-  .invitem .top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
-  .invitem .ttl { font-weight: 650; font-size: 13.5px; }
-  .invitem .meta { font-size: 12px; color: var(--ink-soft); }
 
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
     background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 13.5px;
@@ -227,42 +266,52 @@
       </div>
     </div>
 
-    <!-- Colonne latérale -->
+    <!-- Colonne latérale : Mes factures -->
     <div>
-      <!-- Q&A -->
-      <div class="card">
-        <h2>Questions sur la facture</h2>
-        <div id="qaDisabled" class="empty">Analysez une facture pour poser des questions à son sujet.</div>
-        <div id="qaPanel" class="hidden">
-          <div class="chat" id="chat"></div>
-          <div class="row">
-            <input type="text" id="qaInput" placeholder="ex. Cette dépense est-elle déductible ?" style="flex:1" />
-            <button id="qaSend">Envoyer</button>
-          </div>
-          <p class="hint">Réponses ancrées uniquement sur l'OCR stocké + l'historique de la conversation (aucun RAG).</p>
-        </div>
-      </div>
-
-      <!-- Liste factures -->
       <div class="card">
         <div class="row" style="justify-content:space-between">
           <h2 style="margin:0">Mes factures</h2>
           <button class="ghost" id="refreshBtn" style="padding:6px 12px;font-size:13px">↻ Rafraîchir</button>
         </div>
+        <p class="hint" style="margin-top:8px">Cliquez une facture pour déplier son analyse, puis 💬 pour la questionner.</p>
         <div class="invlist mt" id="invList"><div class="empty">Aucune facture chargée.</div></div>
       </div>
     </div>
   </div>
 </main>
 
+<!-- Bouton flottant + panneau de chat -->
+<button class="fab" id="chatFab" title="Assistant facture">💬<span class="dot-live"></span></button>
+<div class="chat-overlay" id="chatOverlay"></div>
+<aside class="chat-panel" id="chatPanel" aria-hidden="true">
+  <div class="chat-header">
+    <div class="info">
+      <div class="t">Assistant facture</div>
+      <div class="sub" id="chatSub">Aucune facture sélectionnée</div>
+    </div>
+    <button class="close" id="chatClose" title="Fermer">✕</button>
+  </div>
+  <div class="chat-body" id="chatMessages"></div>
+  <div class="chat-footer">
+    <div class="row">
+      <input type="text" id="chatInput" placeholder="Posez une question sur cette facture…" style="flex:1" disabled />
+      <button id="chatSend" disabled>Envoyer</button>
+    </div>
+    <p class="hint">Réponses ancrées sur l'OCR stocké + l'historique (aucun RAG).</p>
+  </div>
+</aside>
+
 <div class="toast" id="toast"></div>
 
 <script>
 // ---------------------------------------------------------------------------
-// Petit client de l'API Agent 3. Servi en MÊME ORIGINE que FastAPI -> pas de CORS.
+// Client de l'API Agent 3. Servi en MÊME ORIGINE que FastAPI -> pas de CORS.
 // ---------------------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
-const state = { file: null, threadId: null, documentId: null, completed: false };
+const state = { file: null, threadId: null, documentId: null };
+let invoicesCache = [];
+// Chat : facture ciblée + messages en mémoire par document_id.
+const chat = { docId: null, label: null, msgs: {} };
 
 const FIELD_LABELS = {
   invoice_number: "N° de facture", issuer_name: "Émetteur",
@@ -285,6 +334,32 @@ function money(v, cur) {
   return n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + (cur ? " " + esc(cur) : "");
 }
 function val(v) { return (v === null || v === undefined || v === "") ? '<span class="muted">null</span>' : esc(v); }
+function invoiceLabel(inv) {
+  const num = inv.invoice_number ? ("N° " + inv.invoice_number) : "Facture sans numéro";
+  return inv.issuer_name ? (num + " — " + inv.issuer_name) : num;
+}
+function frDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : esc(iso || "");
+}
+// Badge de statut de paiement à partir des champs d'une facture/résultat.
+function paymentBadge(d) {
+  if (d.paid === true) return '<span class="badge green">✓ Payée</span>';
+  if (d.payment_date) {
+    const j = frDate(d.payment_date), n = d.payment_days_until;
+    if (n === null || n === undefined) return `<span class="badge amber">À payer le ${j}</span>`;
+    if (n < 0) return `<span class="badge red">⚠ En retard (échéance ${j}, ${-n} j)</span>`;
+    return `<span class="badge amber">À payer le ${j} (dans ${n} j)</span>`;
+  }
+  if (d.paid === false) return '<span class="badge amber">Non payée</span>';
+  return "";
+}
+// Encart d'alerte listant les incohérences détectées (❗).
+function incoherencesBox(list) {
+  if (!Array.isArray(list) || !list.length) return "";
+  return `<div class="alert"><b>❗ Incohérences détectées (${list.length})</b>
+    <ul>${list.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>`;
+}
 
 // --- Config persistée -------------------------------------------------------
 $("userId").value = localStorage.getItem("lm_user") || "demo-user";
@@ -348,7 +423,7 @@ async function analyze() {
   }
 }
 
-// Aiguille une AnalyzeResponse selon son statut (completed / en_attente / erreur).
+// Aiguille une AnalyzeResponse selon son statut.
 function handleAnalyze(data) {
   state.threadId = data.thread_id || state.threadId;
   state.documentId = data.document_id || state.documentId;
@@ -396,7 +471,6 @@ function renderPending(p) {
         <button id="fieldSend">Répondre</button>
         <button class="ghost" id="fieldSkip">Passer ce champ</button>
       </div>`;
-    // Clic sur une proposition = approbation directe (envoi de la valeur).
     body.querySelectorAll(".sugg").forEach(b => b.addEventListener("click", () => sendAnswer(sugg[+b.dataset.i])));
     const inp = $("fieldInput"); inp.focus();
     $("fieldSend").addEventListener("click", () => { if (inp.value.trim()) sendAnswer(inp.value.trim()); else toast("Saisissez une valeur ou cliquez « Passer »."); });
@@ -414,7 +488,7 @@ function miniInvoice(inv) {
   return `<table class="kv">${rows}</table>`;
 }
 
-// Reprend le thread interrompu avec la réponse de l'utilisateur.
+// Reprend le thread interrompu (champ manquant / doublon) avec la réponse.
 async function sendAnswer(answer) {
   $("pendingCard").classList.add("hidden");
   toast("Envoi…");
@@ -425,7 +499,6 @@ async function sendAnswer(answer) {
     });
     const data = await r.json();
     if (data.status === "erreur") { toast(data.error || "Erreur"); return; }
-    // La reprise d'un flux d'analyse est portée par data.analyze (même forme qu'AnalyzeResponse).
     if (data.analyze) handleAnalyze(data.analyze);
     else handleAnalyze(data);
   } catch (e) { toast("Erreur réseau : " + e.message); }
@@ -444,76 +517,128 @@ function renderResult(data) {
   const kvFields = ["invoice_number","issuer_name","issuer_tax_id","client_name","issue_date","subtotal_ht","vat_amount","total_ttc","currency"];
   const kv = kvFields.map(f => {
     let v = inv[f];
-    if (["subtotal_ht","vat_amount","total_ttc"].includes(f)) v = money(v, f === "currency" ? null : cur);
+    if (["subtotal_ht","vat_amount","total_ttc"].includes(f)) v = money(v, cur);
     else v = val(v);
     return `<tr><td class="k">${esc(FIELD_LABELS[f])}</td><td class="v">${v ?? '<span class="muted">null</span>'}</td></tr>`;
   }).join("");
 
   let lines = "";
   if (inv.line_items && inv.line_items.length) {
-    const body = inv.line_items.map(li => `
+    const rows = inv.line_items.map(li => `
       <tr>
         <td>${val(li.description)}</td>
         <td class="num">${li.quantity ?? ""}</td>
         <td class="num">${money(li.unit_price, cur) ?? ""}</td>
         <td class="num">${money(li.total, cur) ?? ""}</td>
       </tr>`).join("");
-    lines = `<table class="lines"><thead><tr><th>Désignation</th><th class="num">Qté</th><th class="num">P.U.</th><th class="num">Total</th></tr></thead><tbody>${body}</tbody></table>`;
+    lines = `<table class="lines"><thead><tr><th>Désignation</th><th class="num">Qté</th><th class="num">P.U.</th><th class="num">Total</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
 
   const cat = data.expense_category ? `<span class="badge cat">🏷 ${esc(data.expense_category)}</span>` : "";
   const ded = data.deductible === true
     ? '<span class="badge green">✓ Déductible</span>'
     : data.deductible === false ? '<span class="badge red">✗ Non déductible</span>' : "";
+  const pay = paymentBadge(data);
+  const warn = (data.incoherences && data.incoherences.length)
+    ? `<span class="badge red">❗ ${data.incoherences.length} incohérence(s)</span>` : "";
 
   $("resultBody").innerHTML = `
-    <div class="row" style="margin-bottom:12px">${statusBadge} ${cat} ${ded}</div>
+    <div class="row" style="margin-bottom:12px">${statusBadge} ${cat} ${ded} ${pay} ${warn}</div>
     <table class="kv">${kv}</table>
     ${lines}
+    ${incoherencesBox(data.incoherences)}
     ${data.deductibility_reason ? `<p class="hint" style="margin-top:10px"><b>Déductibilité :</b> ${esc(data.deductibility_reason)}</p>` : ""}
     ${data.analysis ? `<div class="analysis"><b>Analyse</b><br>${esc(data.analysis)}</div>` : ""}
+    ${data.saved ? `<div class="mt"><button id="askThis">💬 Questionner cette facture</button></div>` : ""}
   `;
 
-  // Active le Q&A sur cette facture.
-  state.completed = true;
-  $("qaDisabled").classList.add("hidden");
-  $("qaPanel").classList.remove("hidden");
-  $("chat").innerHTML = "";
-  addMsg("bot", "Facture analysée. Posez-moi une question à son sujet.");
+  // Si enregistrée, on la cible pour le chat (sans ouvrir le panneau).
+  if (data.saved && data.document_id) {
+    targetInvoice(data.document_id, invoiceLabel(inv), data.analysis, { open: false });
+    const b = $("askThis");
+    if (b) b.addEventListener("click", () => { openChatPanel(); });
+  }
   loadInvoices();
 }
 
-// --- Q&A --------------------------------------------------------------------
-$("qaSend").addEventListener("click", askQuestion);
-$("qaInput").addEventListener("keydown", e => { if (e.key === "Enter") askQuestion(); });
-function addMsg(who, text) {
-  const d = document.createElement("div");
-  d.className = "msg " + (who === "user" ? "user" : "bot");
-  d.textContent = text;
-  $("chat").appendChild(d); $("chat").scrollTop = $("chat").scrollHeight;
+// ---------------------------------------------------------------------------
+// Chat flottant
+// ---------------------------------------------------------------------------
+$("chatFab").addEventListener("click", () => {
+  if (!chat.docId) toast("Choisissez d'abord une facture dans « Mes factures ».");
+  openChatPanel();
+});
+$("chatClose").addEventListener("click", closeChatPanel);
+$("chatOverlay").addEventListener("click", closeChatPanel);
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeChatPanel(); });
+$("chatSend").addEventListener("click", sendChat);
+$("chatInput").addEventListener("keydown", e => { if (e.key === "Enter") sendChat(); });
+
+function openChatPanel() {
+  $("chatOverlay").classList.add("open");
+  $("chatPanel").classList.add("open");
+  $("chatPanel").setAttribute("aria-hidden", "false");
+  if (chat.docId) $("chatInput").focus();
 }
-async function askQuestion() {
-  const q = $("qaInput").value.trim();
-  if (!q) return;
-  if (!state.threadId) { toast("Analysez d'abord une facture."); return; }
-  addMsg("user", q); $("qaInput").value = "";
-  const typing = document.createElement("div"); typing.className = "msg bot"; typing.textContent = "…";
-  $("chat").appendChild(typing); $("chat").scrollTop = $("chat").scrollHeight;
-  try {
-    // Sur un thread déjà terminé, /answer bascule en mode Q&A (OCR stocké + historique).
-    const r = await fetch("/answer", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ thread_id: state.threadId, answer: q }),
-    });
-    const data = await r.json();
-    typing.remove();
-    if (data.answer) addMsg("bot", data.answer);
-    else if (data.analyze) { addMsg("bot", "(reprise du flux d'analyse)"); handleAnalyze(data.analyze); }
-    else addMsg("bot", data.error || "Pas de réponse.");
-  } catch (e) { typing.remove(); addMsg("bot", "Erreur réseau : " + e.message); }
+function closeChatPanel() {
+  $("chatOverlay").classList.remove("open");
+  $("chatPanel").classList.remove("open");
+  $("chatPanel").setAttribute("aria-hidden", "true");
 }
 
-// --- Liste des factures -----------------------------------------------------
+// Cible une facture pour le chat (depuis « Mes factures » ou après analyse).
+function targetInvoice(docId, label, analysis, { open = true } = {}) {
+  chat.docId = docId;
+  chat.label = label;
+  $("chatSub").textContent = label || "Aucune facture sélectionnée";
+  $("chatFab").classList.add("targeted");
+  $("chatInput").disabled = false; $("chatSend").disabled = false;
+  if (!chat.msgs[docId]) {
+    chat.msgs[docId] = [];
+    if (analysis) chat.msgs[docId].push({ who: "bot", text: "Analyse rédigée :\n" + analysis });
+    chat.msgs[docId].push({ who: "bot", text: "Posez-moi une question sur cette facture." });
+  }
+  renderChat();
+  if (open) openChatPanel();
+}
+
+function renderChat() {
+  const box = $("chatMessages");
+  const msgs = chat.msgs[chat.docId] || [];
+  box.innerHTML = msgs.map(m => `<div class="msg ${m.who === "user" ? "user" : "bot"}">${esc(m.text)}</div>`).join("");
+  box.scrollTop = box.scrollHeight;
+}
+function pushChat(who, text) {
+  if (!chat.docId) return;
+  (chat.msgs[chat.docId] = chat.msgs[chat.docId] || []).push({ who, text });
+  renderChat();
+}
+
+async function sendChat() {
+  const q = $("chatInput").value.trim();
+  if (!q) return;
+  if (!chat.docId) { toast("Choisissez une facture à questionner."); return; }
+  const userId = $("userId").value.trim();
+  pushChat("user", q); $("chatInput").value = "";
+  pushChat("bot", "…");
+  try {
+    const r = await fetch("/qa", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId, document_id: chat.docId, question: q }),
+    });
+    const data = await r.json();
+    chat.msgs[chat.docId].pop();  // retire le "…"
+    if (data.status === "completed" && data.answer) pushChat("bot", data.answer);
+    else pushChat("bot", data.error || "Pas de réponse.");
+  } catch (e) {
+    chat.msgs[chat.docId].pop();
+    pushChat("bot", "Erreur réseau : " + e.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mes factures (items dépliables : analyse + bouton questionner)
+// ---------------------------------------------------------------------------
 $("refreshBtn").addEventListener("click", loadInvoices);
 async function loadInvoices() {
   const userId = $("userId").value.trim();
@@ -521,23 +646,56 @@ async function loadInvoices() {
   try {
     const r = await fetch("/invoices/" + encodeURIComponent(userId));
     const items = await r.json();
-    const list = $("invList");
-    if (!Array.isArray(items) || !items.length) { list.innerHTML = '<div class="empty">Aucune facture pour cet utilisateur.</div>'; return; }
-    list.innerHTML = items.map(it => {
-      const inv = it.invoice || {};
-      const ded = it.deductible === true ? '<span class="badge green">déductible</span>'
-        : it.deductible === false ? '<span class="badge red">non déductible</span>' : "";
-      const cat = it.expense_category ? `<span class="badge cat">${esc(it.expense_category)}</span>` : "";
-      return `<div class="invitem">
-        <div class="top">
-          <span class="ttl">${val(inv.issuer_name)} · ${val(inv.invoice_number)}</span>
-          <span class="ttl">${money(inv.total_ttc, inv.currency) || ""}</span>
-        </div>
-        <div class="meta">${val(inv.issue_date)}</div>
-        <div class="row" style="margin-top:6px">${cat} ${ded}</div>
-      </div>`;
-    }).join("");
+    invoicesCache = Array.isArray(items) ? items : [];
+    renderInvoices();
   } catch (e) { toast("Impossible de charger les factures."); }
+}
+
+function renderInvoices() {
+  const list = $("invList");
+  if (!invoicesCache.length) { list.innerHTML = '<div class="empty">Aucune facture pour cet utilisateur.</div>'; return; }
+  list.innerHTML = invoicesCache.map((it, idx) => {
+    const inv = it.invoice || {};
+    const cat = it.expense_category ? `<span class="badge cat">🏷 ${esc(it.expense_category)}</span>` : "";
+    const ded = it.deductible === true ? '<span class="badge green">✓ déductible</span>'
+      : it.deductible === false ? '<span class="badge red">✗ non déductible</span>' : "";
+    const nInc = (it.incoherences && it.incoherences.length) || 0;
+    const headWarn = nInc ? ' <span class="warn-icon">❗</span>' : "";
+    const unpaid = it.paid !== true && (it.payment_date || it.paid === false);
+    const headPay = unpaid
+      ? `<span class="pay">· à payer${it.payment_date ? " " + frDate(it.payment_date) : ""}</span>` : "";
+    const fields = [
+      ["Date d'émission", val(inv.issue_date)],
+      ["Matricule émetteur", val(inv.issuer_tax_id)],
+      ["Total TTC", money(inv.total_ttc, inv.currency) || '<span class="muted">null</span>'],
+    ].map(([k, v]) => `<tr><td class="k">${k}</td><td class="v">${v}</td></tr>`).join("");
+    return `<div class="inv" data-idx="${idx}">
+      <button class="inv-head" data-act="toggle">
+        <span class="chev">▸</span>
+        <span class="ci"><span class="ttl">${val(inv.issuer_name)}${headWarn}</span><br>
+          <span class="meta">${val(inv.invoice_number)} ${headPay}</span></span>
+        <span class="amt">${money(inv.total_ttc, inv.currency) || ""}</span>
+      </button>
+      <div class="inv-body">
+        <div class="row" style="margin:2px 0 10px">${cat} ${ded} ${paymentBadge(it)}</div>
+        <table class="kv">${fields}</table>
+        ${incoherencesBox(it.incoherences)}
+        ${it.analysis
+          ? `<div class="analysis"><b>Analyse rédigée</b><br>${esc(it.analysis)}</div>`
+          : '<p class="hint">Aucune analyse enregistrée pour cette facture.</p>'}
+        <div class="mt"><button data-act="ask">💬 Poser une question</button></div>
+      </div>
+    </div>`;
+  }).join("");
+
+  list.querySelectorAll(".inv").forEach(el => {
+    const idx = +el.dataset.idx;
+    el.querySelector('[data-act="toggle"]').addEventListener("click", () => el.classList.toggle("open"));
+    el.querySelector('[data-act="ask"]').addEventListener("click", () => {
+      const it = invoicesCache[idx]; const inv = it.invoice || {};
+      targetInvoice(it.document_id, invoiceLabel(inv), it.analysis, { open: true });
+    });
+  });
 }
 
 // --- Init -------------------------------------------------------------------
