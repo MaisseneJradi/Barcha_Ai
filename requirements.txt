@@ -1,0 +1,15 @@
+# --- Runtime (Agent 3) ---
+mistralai>=1.2.0
+langgraph>=0.2.50
+langgraph-checkpoint-mongodb>=0.1.0
+pymongo[srv]>=4.6            # extra [srv] = dnspython, requis pour les URI Atlas mongodb+srv://
+certifi>=2024.2               # bundle de certificats CA (fallback TLS Atlas sous Windows)
+pydantic>=2.5
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-dotenv>=1.0
+python-multipart>=0.0.9        # uploads multipart pour /analyze
+
+# --- Tests (aucun service externe requis) ---
+pytest>=8.0
+mongomock>=4.1
